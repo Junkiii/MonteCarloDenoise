@@ -1,0 +1,3 @@
+In total I used around 23 trained models for the evaluation of my thesis. This is 2.8 GB 
+of memory so I decided to only include the Open Image Denoise model which finally worked best. 
+

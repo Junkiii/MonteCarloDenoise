@@ -1,0 +1,13 @@
+// Dummy file used to generate a C interface for the renderer
+
+struct Settings {
+    eye: Vec3,
+    dir: Vec3,
+    up: Vec3,
+    right: Vec3,
+    width: f32,
+    height: f32
+}
+
+extern fn get_spp() -> i32 { 1 }
+extern fn render(settings: &Settings, iter: i32) -> () {}

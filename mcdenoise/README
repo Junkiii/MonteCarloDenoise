@@ -1,0 +1,11 @@
+This is my neural network training library. 
+To start a training configured in config.py execute train.py. 
+You can also test neural networks with test.py.
+
+It is important that you transform the datasets first with datatransform.py.
+Pls specify the data_raw path and the dataset path in the module.
+training_data and validation data folders contain the raw training data set 
+and test data set used in the thesis. 
+
+For every module you execute (train.py, test.py, datatransform.py, validate.py)
+you might have to change some paths or values!

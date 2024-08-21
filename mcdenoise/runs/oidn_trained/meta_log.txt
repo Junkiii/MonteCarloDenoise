@@ -1,0 +1,53 @@
+Training log meta data:
+>>>   batch_size = 14
+>>>   initial_lr = 0.0001
+>>>   num_epochs = 1270
+Training with Aux.NDSN input channels. 
+
+Training data: 
+training_data/data
+
+Optimizer: 
+Adam (
+Parameter Group 0
+    amsgrad: False
+    betas: (0.9, 0.999)
+    eps: 1e-08
+    lr: 0.0001
+    weight_decay: 0
+)
+
+Loss: 
+id = Loss.MIX
+MIX_Loss(
+  (l1): L1Loss()
+  (ms_ssim): MS_SSIM_Loss()
+)
+
+Learning rate scheduler: 
+id = Schedule.CONST
+None
+
+Model: 
+id = Model.OIDN
+OIDN(
+  (enc_conv0): Conv2d(12, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv1): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv2): Conv2d(32, 48, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv3): Conv2d(48, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv4): Conv2d(64, 80, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv5a): Conv2d(80, 96, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (enc_conv5b): Conv2d(96, 96, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv4a): Conv2d(160, 112, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv4b): Conv2d(112, 112, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv3a): Conv2d(160, 96, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv3b): Conv2d(96, 96, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv2a): Conv2d(128, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv2b): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv1a): Conv2d(76, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv1b): Conv2d(64, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  (dec_conv0): Conv2d(32, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+)
+Started training: 2021-11-20|10:25:54
+Finished training: 2021-11-20|22:15:42
+Trained for 1269 epochs.

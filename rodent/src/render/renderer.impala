@@ -1,0 +1,205 @@
+struct PathTracer {
+    on_emit:   RayEmitter,
+    on_hit:    fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Color, Color, Color, Color, Color) -> !) -> (),
+    on_shadow: fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Ray, Color) -> !) -> (),
+    on_bounce: fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Ray, RayState) -> !) -> (),
+}
+
+struct RayState {
+    rnd:     RndState,
+    contrib: Color,
+    albedo:  Color,
+    normal:  Color,
+     
+    diffuse: Color,
+    specular: Color,
+    
+    mis:     f32,
+    depth:   i32
+}
+
+type RayEmitter = fn (i32, i32, i32, i32, i32) -> (Ray, RayState);
+
+fn @make_ray_state(rnd: RndState, contrib: Color, albedo: Color, normal: Color, diffuse: Color, specular: Color, mis: f32, depth: i32) -> RayState {
+    RayState {
+        rnd: rnd,
+        contrib: contrib,
+        albedo: albedo,
+        normal: normal,
+         
+        diffuse: diffuse, 
+        specular: specular, 
+        
+        mis: mis,
+        depth: depth
+    }
+}
+
+fn @make_camera_emitter(scene: Scene, device: Device, iter: i32) -> RayEmitter {
+    @ |sample, x, y, width, height| {
+        let mut hash = fnv_init();
+        hash = fnv_hash(hash, sample as u32);
+        hash = fnv_hash(hash, iter as u32);
+        hash = fnv_hash(hash, x as u32);
+        hash = fnv_hash(hash, y as u32);
+        let mut rnd = hash as RndState;
+        let kx = 2.0f * (x as f32 + randf(&mut rnd)) / (width  as f32) - 1.0f;
+        let ky = 1.0f - 2.0f * (y as f32 + randf(&mut rnd)) / (height as f32);
+        let ray = scene.camera.generate_ray(kx, ky);
+        let state = make_ray_state(rnd, white, black, black, black, black, 0.0f, 0);
+        (ray, state)
+    }
+}
+
+fn @make_debug_renderer() -> Renderer {
+    @ |scene, device, iter| {
+        let on_emit = make_camera_emitter(scene, device, iter);
+        let on_shadow = @ |_, _, _, _, _, _| ();
+        let on_bounce = @ |_, _, _, _, _, _| ();
+        let on_hit = @ |ray, hit, state, surf, mat, accumulate| {
+            accumulate(color_mulf(white, -vec3_dot(ray.dir, surf.local.col(2))), black, black, black, black)
+        };
+
+        let path_tracer = PathTracer {
+            on_emit:   on_emit,
+            on_hit:    on_hit,
+            on_shadow: on_shadow,
+            on_bounce: on_bounce
+        };
+
+        device.trace(scene, path_tracer, 1);
+    }
+}
+
+fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
+    @ |scene, device, iter| {
+        let offset = 0.001f;
+        let pdf_lightpick = 1.0f / (scene.num_lights as f32);
+
+        let on_emit = make_camera_emitter(scene, device, iter);
+
+        fn @on_shadow( ray: Ray
+                     , hit: Hit
+                     , state: &mut RayState
+                     , surf: SurfaceElement
+                     , mat: Material
+                     , emit: fn (Ray, Color) -> !
+                     ) -> () {
+            // No shadow rays for specular materials
+            if mat.bsdf.is_specular {
+                return()
+            }
+
+            let rnd = &mut state.rnd;
+            // Note: randi() returns random integers, but we only want positive integers here
+            let light_id = (randi(rnd) & 0x7FFFFFFF) % scene.num_lights;
+            let light = @@(scene.lights)(light_id);
+            let light_sample = @@(light.sample_direct)(rnd, surf.point);
+            let light_dir = vec3_sub(light_sample.pos, surf.point);
+            let vis = vec3_dot(light_dir, surf.local.col(2));
+
+            if vis > 0.0f && light_sample.cos > 0.0f {
+                let inv_d = 1.0f / vec3_len(device.intrinsics, light_dir);
+                let inv_d2 = inv_d * inv_d;
+                let in_dir = vec3_mulf(light_dir, inv_d);
+                let out_dir = vec3_neg(ray.dir);
+
+                let pdf_e = if light.has_area { mat.bsdf.pdf(in_dir, out_dir) } else { 0.0f };
+                let pdf_l = light_sample.pdf_area * pdf_lightpick;
+                let inv_pdf_l = 1.0f / pdf_l;
+
+                let cos_e = vis * inv_d;
+                let cos_l = light_sample.cos;
+
+                let mis = if light.has_area { 1.0f / (1.0f + pdf_e * cos_l * inv_d2 * inv_pdf_l) } else { 1.0f };
+                let geom_factor = cos_e * cos_l * inv_d2 * inv_pdf_l;
+
+                let contrib = color_mul(light_sample.intensity, color_mul(state.contrib, mat.bsdf.eval(in_dir, out_dir)));
+                emit(
+                    make_ray(surf.point, light_dir, offset, 1.0f - offset),
+                    color_mulf(contrib, geom_factor * mis)
+                )
+            }
+        }
+
+        fn @on_hit( ray: Ray
+                  , hit: Hit
+                  , state: &mut RayState
+                  , surf: SurfaceElement
+                  , mat: Material
+                  , accumulate: fn (Color, Color, Color, Color, Color) -> !
+                  ) -> () {
+            let mut contrib = black;
+            let mut albedo = black;
+            let mut normal = black;
+            
+            let mut diffuse = black;
+            let mut specular = black;
+            
+
+            if (is_black(state.normal)) {
+                if(!mat.bsdf.is_specular) {
+                    state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
+                    state.albedo = mat.bsdf.albedo();
+                     
+                    state.diffuse = mat.bsdf.diffuse();
+                    state.specular = mat.bsdf.specular();
+                    
+
+                    if(mat.is_emissive) {
+                        state.albedo = color_mul(state.albedo, mat.emission(surf.face_normal).intensity);   
+                    }
+
+                    albedo = state.albedo;
+                    normal = state.normal;
+                     
+                    diffuse = state.diffuse;
+                    specular = state.specular;
+                    
+                }
+            }
+            // Hits on a light source
+            if mat.is_emissive && surf.is_entering {
+                let out_dir = vec3_neg(ray.dir);
+                let emit = mat.emission(out_dir);
+                let next_mis = state.mis * hit.distance * hit.distance / vec3_dot(out_dir, surf.local.col(2));
+                let mis = 1.0f / (1.0f + next_mis * pdf_lightpick * emit.pdf_area);
+                contrib = color_mulf(color_mul(state.contrib, emit.intensity), mis);
+            }
+            accumulate(contrib, albedo, normal, diffuse, specular)
+        }
+
+        fn @on_bounce( ray: Ray
+                     , hit: Hit
+                     , state: &mut RayState
+                     , surf: SurfaceElement
+                     , mat: Material
+                     , bounce: fn (Ray, RayState) -> !
+                     ) -> () {
+            // Russian roulette and maximum depth
+            let rr_prob = russian_roulette(state.contrib, 0.75f);
+            if state.depth >= max_path_len || randf(&mut state.rnd) >= rr_prob {
+                return()
+            }
+
+            // Bounce
+            let out_dir = vec3_neg(ray.dir);
+            let mat_sample = mat.bsdf.sample(&mut state.rnd, out_dir, false);
+            let contrib = color_mul(state.contrib, mat_sample.color);
+            let mis = if mat.bsdf.is_specular { 0.0f } else { 1.0f / mat_sample.pdf };
+            bounce(
+                make_ray(surf.point, mat_sample.in_dir, offset, flt_max),
+                make_ray_state(state.rnd, color_mulf(contrib, mat_sample.cos / (mat_sample.pdf * rr_prob)), state.albedo, state.normal, state.diffuse, state.specular, mis, state.depth + 1)
+            )
+        }
+
+        let path_tracer = PathTracer {
+            on_emit:   on_emit,
+            on_hit:    on_hit,
+            on_shadow: on_shadow,
+            on_bounce: on_bounce
+        };
+
+        device.trace(scene, path_tracer, spp);
+    }
+}
